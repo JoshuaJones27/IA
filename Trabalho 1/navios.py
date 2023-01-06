@@ -79,16 +79,16 @@ class State:
             return next_states
 
     def optimize_dock(dock1, dock2, ships):
-# Add the initial state to the priority queue
+        # Add the initial state to the priority queue
         initial_state = State(dock1, dock2, 0)
         priority_queue = []
         heapq.heappush(priority_queue, (initial_state.estimate_total_wait_time(), initial_state))
 
         while len(priority_queue) > 0:
-    # Get the state with the lowest estimated wait time
+            # Get the state with the lowest estimated wait time
             current_state = heapq.heappop(priority_queue)
 
-    # Check if the current state is a solution
+        # Check if the current state is a solution
         if len(current_state.dock1.ships) == 0 and len(current_state.dock2.ships) == 0:
            return current_state
 
