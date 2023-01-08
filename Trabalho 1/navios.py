@@ -1,6 +1,6 @@
 import heapq
+import random
 
-# Represents a ship that is docked at the shipping dock
 class Ship:
     def __init__(self, arrival_time, wait_time, port, ship_type):
         self.arrival_time = arrival_time
@@ -8,109 +8,145 @@ class Ship:
         self.port = port
         self.ship_type = ship_type
 
-# Represents a shipping dock
 class Dock:
-    def __init__(self, dock_number, max_ship_size):
-        self.dock_number = dock_number
-        self.max_ship_size = max_ship_size
-        self.ships = []
+    def __init__(self, name, capacity, ship_types):
+        self.name = name
+        self.capacity = capacity
+        self.ship_types = ship_types
 
-    # Adds a ship to the dock
-    def add_ship(self, ship):
-        self.ships.append(ship)
+def get_shortest_wait_time(docks, ships):
+    # Initialize variables
+    heap = []
+    visited = set()
+    g = {dock: float('inf') for dock in docks}
+    f = {dock: float('inf') for dock in docks}
+    came_from = {dock: None for dock in docks}
+    current = None
 
-# Represents the state of the shipping dock organization at a given time
-class State:
-    def __init__(self, dock1, dock2, time):
-        self.dock1 = dock1
-        self.dock2 = dock2
-        self.time = time
+    # Add starting dock to the heap
+    start_dock = docks[0]
+    g[start_dock] = 0
+    f[start_dock] = g[start_dock] + h(start_dock, ships)
+    heapq.heappush(heap, (f[start_dock], start_dock))
 
-    # Calculates the estimated waiting time for all ships at the dock
-    def estimate_total_wait_time(self):
-        total_wait_time = 0
-        for ship in self.dock1.ships:
-            total_wait_time += ship.wait_time
-        for ship in self.dock2.ships:
-            total_wait_time += ship.wait_time
-        return total_wait_time
+    while heap:
+        current = heapq.heappop(heap)[1]
+        visited.add(current)
 
-    # Returns the next possible states from the current state
-    def get_next_states(self):
-        next_states = []
+        # Check if we have reached the goal
+        if is_goal(current, ships):
+            return reconstruct_path(came_from, current)
 
-        # Check if a ship can be removed from dock 1
-        if len(self.dock1.ships) > 0:
-            next_dock1 = Dock(self.dock1.dock_number, self.dock1.max_ship_size)
-            next_dock1.ships = self.dock1.ships[1:]
-            next_dock2 = Dock(self.dock2.dock_number, self.dock2.max_ship_size)
-            next_dock2.ships = self.dock2.ships[:]
-            next_states.append(State(next_dock1, next_dock2, self.time + self.dock1.ships[0].wait_time))
+        # Generate successors
+        successors = generate_successors(current, docks, ships)
+        for dock in successors:
+            if dock in visited:
+                continue
+            tentative_g = g[current] + cost(current, dock, ships)
+            if tentative_g < g[dock]:
+                came_from[dock] = current
+                g[dock] = tentative_g
+                f[dock] = g[dock] + h(dock, ships)
+                if dock not in heap:
+                    heapq.heappush(heap, (f[dock], dock))
 
-        # Check if a ship can be removed from dock 2
-        if len(self.dock2.ships) > 0:
-            next_dock1 = Dock(self.dock1.dock_number, self.dock1.max_ship_size)
-            next_dock1.ships = self.dock1.ships[:]
-            next_dock2 = Dock(self.dock2.dock_number, self.dock2.max_ship_size)
-            next_dock2.ships = self.dock2.ships[1:]
-            next_states.append(State(next_dock1, next_dock2, self.time + self.dock2.ships[0].wait_time))
+    return []
 
-        # Check if a ship can be added to dock 1
-        for ship in self.dock1.ships:
-            if ship.arrival_time > self.time:
-              break
-            if ship.ship_type != "big" and len(self.dock1.ships) < self.dock1.max_ship_size:
-                next_dock1 = Dock(self.dock1.dock_number, self.dock1.max_ship_size)
-                next_dock1.ships = self.dock1.ships[:] + [ship]
-                next_dock2 = Dock(self.dock2.dock_number, self.dock2.max_ship_size)
-                next_dock2.ships = self.dock2.ships[:]
-                next_states.append(State(next_dock1, next_dock2, self.time))
+def generate_successors(dock, docks, ships):
+    successors = []
+    for other_dock in docks:
+        if other_dock != dock and can_transfer(dock, other_dock, ships):
+            successors.append(other_dock)
+    return successors
 
-        # Check if a ship can be added to dock 2
-        for ship in self.dock2.ships:
-            if ship.arrival_time > self.time:
-                break
-            if len(self.dock2.ships) < self.dock2.max_ship_size:
-                next_dock1 = Dock(self.dock1.dock_number, self.dock1.max_ship_size)
-                next_dock1.ships = self.dock1.ships[:]
-                next_dock2 = Dock(self.dock2.dock_number, self.dock2.max_ship_size)
-                next_dock2.ships = self.dock2.ships[:] + [ship]
-                next_states.append(State(next_dock1, next_dock2, self.time))
-            return next_states
+def can_transfer(dock1, dock2, ships):
+    if dock1.capacity < len(ships) or dock2.capacity < len(ships):
+        return False
+    if dock1.name == 'Dock 1' and 'Big Ship' in [s.ship_type for s in ships]:
+        return False
+    return True
 
-    def optimize_dock(dock1, dock2, ships):
-        # Add the initial state to the priority queue
-        initial_state = State(dock1, dock2, 0)
-        priority_queue = []
-        heapq.heappush(priority_queue, (initial_state.estimate_total_wait_time(), initial_state))
+def cost(dock1, dock2, ships):
+    transfer_time = 30
+    return transfer_time + sum([s.wait_time for s in ships if s.port == dock2.name])
 
-        while len(priority_queue) > 0:
-            # Get the state with the lowest estimated wait time
-            current_state = heapq.heappop(priority_queue)
+def h(dock, ships):
+    return sum([s.wait_time for s in ships if s.port == dock.name])
 
-        # Check if the current state is a solution
-        if len(current_state.dock1.ships) == 0 and len(current_state.dock2.ships) == 0:
-           return current_state
+def is_goal(dock, ships):
+    return all(s.port == dock.name for s in ships)
 
-    # Add the next possible states to the priority queue
-        for next_state in current_state.get_next_states():
-            heapq.heappush(priority_queue, (next_state.estimate_total_wait_time(), next_state))
+def reconstruct_path(came_from, current):
+    total_path = [current]
+    while came_from[current] is not None:
+        current = came_from[current]
+        total_path.append(current)
+    return total_path[::-1]
 
+def genetic_algorithm(docks, ships, population_size=100, num_generations=100):
+    def create_chromosome(docks):
+        return [random.choice(docks) for _ in ships]
 
-dock1 = Dock(1, 3)
-dock2 = Dock(2, 5)
+    def create_initial_population(docks, population_size):
+        return [create_chromosome(docks) for _ in range(population_size)]
 
-ships = [
-Ship(0, 10, "Port A", "small"),
-Ship(0, 20, "Port B", "big"),
-Ship(5, 15, "Port C", "small"),
-Ship(10, 10, "Port D", "small"),
-Ship(15, 5, "Port E", "small")
-]
+    def get_fitness(chromosome):
+        wait_time = 0
+        for i, dock in enumerate(chromosome):
+            if i > 0:
+                wait_time += 30
+            wait_time += sum(s.wait_time for s in ships if s.port == dock.name)
+        return -wait_time
 
-optimal_state = State.optimize_dock(dock1, dock2, ships)
+    def get_best_chromosome(population, docks, ships):
+        return max(population, key=lambda x: get_fitness(x))
 
-print("Optimal shipping dock organization:")
-print(f"Dock 1: {[ship.port for ship in optimal_state.dock1.ships]}")
-print(f"Dock 2: {[ship.port for ship in optimal_state.dock2.ships]}")
-print(f"Total wait time: {optimal_state.time} minutes")
+    def mutate(chromosome, docks):
+        mutant = chromosome[:]
+        i = random.randint(0, len(mutant) - 1)
+        mutant[i] = random.choice(docks)
+        return mutant
+
+    def crossover(chromosome1, chromosome2):
+        i = random.randint(1, len(chromosome1) - 1)
+        return chromosome1[:i] + chromosome2[i:]
+
+    population = create_initial_population(docks, population_size)
+    best_chromosome = get_best_chromosome(population, docks, ships)
+    for _ in range(num_generations):
+        next_population = []
+        while len(next_population) < population_size:
+            chromosome1 = random.choice(population)
+            chromosome2 = random.choice(population)
+            if random.random() < 0.8:
+                chromosome1 = mutate(chromosome1, docks)
+            if random.random() < 0.8:
+                chromosome2 = mutate(chromosome2, docks)
+            next_population.append(crossover(chromosome1, chromosome2))
+        population = next_population
+        best_chromosome = get_best_chromosome(population, docks, ships)
+    return best_chromosome
+
+def main():
+    # Create docks
+    dock1 = Dock('Dock 1', 2, ['All'])
+    dock2 = Dock('Dock 2', 2, ['All'])
+    docks = [dock1, dock2]
+
+    # Create ships
+    ship1 = Ship(10, 20, 'Dock 1', 'Small Ship')
+    ship2 = Ship(20, 30, 'Dock 2', 'Big Ship')
+    ship3 = Ship(30, 40, 'Dock 2', 'Small Ship')
+    ship4 = Ship(40, 50, 'Dock 1', 'Big Ship')
+    ships = [ship1, ship2, ship3, ship4]
+
+    # Organize shipping dock using A* algorithm
+    a_star_solution = get_shortest_wait_time(docks, ships)
+    print(f'A* Solution: {[dock.name for dock in a_star_solution]}')
+
+    # Organize shipping dock using genetic algorithm
+    genetic_algorithm_solution = genetic_algorithm(docks, ships)
+    print(f'Genetic Algorithm Solution: {[dock.name for dock in genetic_algorithm_solution]}')
+
+if __name__ == '__main__':
+    main()
